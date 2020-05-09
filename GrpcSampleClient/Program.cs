@@ -177,7 +177,7 @@ namespace GrpcSampleClient
         private static Greeter.GreeterClient GetGrpcNetClient(string host, int port)
         {
             AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-            var httpClient = new HttpClient() { Timeout = Timeout.InfiniteTimeSpan };
+            var httpHandler = new HttpClientHandler() { UseProxy = false, AllowAutoRedirect = false };
             var baseUri = new UriBuilder
             {
                 Scheme = Uri.UriSchemeHttp,
@@ -187,7 +187,7 @@ namespace GrpcSampleClient
             };
             var channelOptions = new GrpcChannelOptions
             {
-                HttpClient = httpClient
+                HttpHandler = httpHandler
             };
             return new Greeter.GreeterClient(GrpcChannel.ForAddress(baseUri.Uri, channelOptions));
         }
