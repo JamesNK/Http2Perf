@@ -23,12 +23,14 @@ namespace GrpcSampleClient
         {
             const int headerSize = 5;
 
+            var messageSize = _content.CalculateSize();
+
             var data = new byte[headerSize];
             data[0] = 0;
-            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(1, 4), (uint)_content.CalculateSize());
+            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(1, 4), (uint)messageSize);
             await stream.WriteAsync(data, CancellationToken.None).ConfigureAwait(false);
 
-            data = new byte[headerSize];
+            data = new byte[messageSize];
             _content.WriteTo(new CodedOutputStream(data));
             await stream.WriteAsync(data, CancellationToken.None).ConfigureAwait(false);
 
