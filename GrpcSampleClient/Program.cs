@@ -259,7 +259,7 @@ namespace GrpcSampleClient
             }
             else
             {
-                httpRequest.Content = new PushUnaryContent<HelloRequest, HelloReply>(request);
+                httpRequest.Content = new PushUnaryContent<HelloRequest>(request);
             }
 
             httpRequest.Headers.TryAddWithoutValidation("TE", "trailers");
