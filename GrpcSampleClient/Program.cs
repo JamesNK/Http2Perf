@@ -7,6 +7,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -67,7 +68,22 @@ namespace GrpcSampleClient
             }
             else if (args[0] == "r")
             {
-                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i));
+                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: false, streamResponse: false);
+                clientType = "Raw HttpMessageInvoker";
+            }
+            else if (args[0] == "r-stream-request")
+            {
+                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: true, streamResponse: false);
+                clientType = "Raw HttpMessageInvoker";
+            }
+            else if (args[0] == "r-stream-response")
+            {
+                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: false, streamResponse: true);
+                clientType = "Raw HttpMessageInvoker";
+            }
+            else if (args[0] == "r-stream-all")
+            {
+                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: true, streamResponse: true);
                 clientType = "Raw HttpMessageInvoker";
             }
             else if (args[0] == "h2")
@@ -220,27 +236,91 @@ namespace GrpcSampleClient
             return HelloReply.Parser.ParseDelimitedFrom(responseStream);
         }
 
-        private static async Task<HelloReply> MakeRawGrpcCall(HelloRequest request, HttpMessageInvoker client)
+        private const int HeaderSize = 5;
+        private static readonly CancellationTokenSource Cts = new CancellationTokenSource();
+
+        private static async Task<HelloReply> MakeRawGrpcCall(HelloRequest request, HttpMessageInvoker client, bool streamRequest, bool streamResponse)
         {
-            var messageSize = request.CalculateSize();
-            var data = new byte[messageSize + 5];
-            request.WriteTo(new CodedOutputStream(data));
-
-            Array.Copy(data, 0, data, 5, messageSize);
-            data[0] = 0;
-            BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(1, 4), (uint)messageSize);
-
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, RawGrpcUri);
             httpRequest.Version = HttpVersion.Version20;
-            httpRequest.Content = new ByteArrayContent(data);
-            httpRequest.Content.Headers.TryAddWithoutValidation("Content-Type", "application/grpc");
+
+            if (!streamRequest)
+            {
+                var messageSize = request.CalculateSize();
+                var data = new byte[messageSize + HeaderSize];
+                request.WriteTo(new CodedOutputStream(data));
+
+                Array.Copy(data, 0, data, HeaderSize, messageSize);
+                data[0] = 0;
+                BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(1, 4), (uint)messageSize);
+
+                httpRequest.Content = new ByteArrayContent(data);
+                httpRequest.Content.Headers.TryAddWithoutValidation("Content-Type", "application/grpc");
+            }
+            else
+            {
+                httpRequest.Content = new PushUnaryContent<HelloRequest, HelloReply>(request);
+            }
+
             httpRequest.Headers.TryAddWithoutValidation("TE", "trailers");
 
-            using var response = await client.SendAsync(httpRequest, default);
+            using var response = await client.SendAsync(httpRequest, Cts.Token);
             response.EnsureSuccessStatusCode();
 
-            data = await response.Content.ReadAsByteArrayAsync();
-            var responseMessage = HelloReply.Parser.ParseFrom(data.AsSpan(5).ToArray());
+            HelloReply responseMessage;
+            if (!streamResponse)
+            {
+                var data = await response.Content.ReadAsByteArrayAsync();
+                responseMessage = HelloReply.Parser.ParseFrom(data.AsSpan(5).ToArray());
+            }
+            else
+            {
+                var responseStream = await response.Content.ReadAsStreamAsync();
+                var data = new byte[HeaderSize];
+
+                int read;
+                var received = 0;
+                while ((read = await responseStream.ReadAsync(data.AsMemory(received, HeaderSize - received), Cts.Token).ConfigureAwait(false)) > 0)
+                {
+                    received += read;
+
+                    if (received == HeaderSize)
+                    {
+                        break;
+                    }
+                }
+
+                if (received < HeaderSize)
+                {
+                    throw new InvalidDataException("Unexpected end of content while reading the message header.");
+                }
+
+                var length = (int)BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(1, 4));
+
+                if (data.Length < length)
+                {
+                    data = new byte[length];
+                }
+
+                received = 0;
+                while ((read = await responseStream.ReadAsync(data.AsMemory(received, length - received), Cts.Token).ConfigureAwait(false)) > 0)
+                {
+                    received += read;
+
+                    if (received == length)
+                    {
+                        break;
+                    }
+                }
+
+                read = await responseStream.ReadAsync(data, Cts.Token);
+                if (read > 0)
+                {
+                    throw new InvalidDataException("Extra data returned.");
+                }
+
+                responseMessage = HelloReply.Parser.ParseFrom(data);
+            }
 
             var grpcStatus = response.TrailingHeaders.GetValues("grpc-status").SingleOrDefault();
             if (grpcStatus != "0")
