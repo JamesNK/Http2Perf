@@ -18,9 +18,12 @@ Clients:
 * r-stream-response = gRPC with raw HttpClient (stream response)
 * r-stream-all = gRPC with raw HttpClient (stream all)
 * g = gRPC with Grpc.Net.Client
+* gs = gRPC bidi streaming with Grpc.Net.Client
 * c = gRPC with Grpc.Core
 * h1 = Protobuf with HttpClient+HTTP/1
 * h2 = Protobuf with HttpClient+HTTP/2
+* h1-json = JSON with HttpClient+HTTP/1
+* h2-json = JSON with HttpClient+HTTP/2
 
 Example - Grpc.Net.Client + 100 callers + connection per thread (100 connections)
 
