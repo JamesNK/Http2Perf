@@ -14,7 +14,7 @@ namespace GrpcSampleServer.Controller
         [HttpPost("SayHello")]
         public Task<HelloReply> SayHello(HelloRequest request)
         {
-            return Task.FromResult<HelloReply>(new HelloReply
+            return Task.FromResult(new HelloReply
             {
                 Message = "Hello " + request.Name
             });

@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using GrpcSample;
+using GrpcSampleServer.Hubs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -21,6 +22,7 @@ namespace GrpcSampleServer
 
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddSignalR();
             services.AddGrpc(o => o.IgnoreUnknownServices = true);
             services.AddControllers();
         }
@@ -39,6 +41,8 @@ namespace GrpcSampleServer
                 endpoints.MapGrpcService<GreeterService>();
 
                 endpoints.MapControllers();
+
+                endpoints.MapHub<GreeterHub>("/greeterhub");
 
                 endpoints.MapPost("/protobuf", async context =>
                 {

@@ -17,7 +17,7 @@ namespace GrpcSampleServer
                 .ConfigureLogging(builder =>
                 {
                     //builder.SetMinimumLevel(LogLevel.Error);
-                    builder.ClearProviders();
+                    //builder.ClearProviders();
                 })
                 .ConfigureWebHostDefaults(webBuilder =>
                 {

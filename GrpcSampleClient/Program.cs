@@ -2,9 +2,11 @@
 using Grpc.Core;
 using Grpc.Net.Client;
 using GrpcSample;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.IO;
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -15,7 +17,9 @@ using System.Net.Http.Json;
 using System.Runtime;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
+using Channel = Grpc.Core.Channel;
 
 namespace GrpcSampleClient
 {
@@ -26,6 +30,7 @@ namespace GrpcSampleClient
         private static readonly Dictionary<int, AsyncDuplexStreamingCall<HelloRequest, HelloReply>> GrpcStreamCache = new Dictionary<int, AsyncDuplexStreamingCall<HelloRequest, HelloReply>>();
         private static readonly Dictionary<int, HttpClient> HttpClientCache = new Dictionary<int, HttpClient>();
         private static readonly Dictionary<int, HttpMessageInvoker> HttpMessageInvokerCache = new Dictionary<int, HttpMessageInvoker>();
+        private static readonly ConcurrentDictionary<int, SignalRStreamingCall> SignalRCache = new ConcurrentDictionary<int, SignalRStreamingCall>();
         private static Uri RawGrpcUri= new Uri($"http://localhost:5001/greet.Greeter/SayHello");
         private static bool ClientPerThread;
 
@@ -105,6 +110,10 @@ namespace GrpcSampleClient
                     request = (i) => MakeJsonHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5000), HttpVersion.Version11);
                     clientType = "HttpClient+JSON+HTTP/1.1";
                     break;
+                case "s":
+                    request = async (i) => await MakeSignalRCall(new HelloRequest() { Name = "foo" }, await GetSignalRStateAsync(i));
+                    clientType = "SignalR BiDi";
+                    break;
                 default:
                     throw new ArgumentException("Argument missing");
             }
@@ -164,6 +173,38 @@ namespace GrpcSampleClient
             }
 
             return client;
+        }
+
+        private static async Task<SignalRStreamingCall> GetSignalRStateAsync(int i)
+        {
+            if (!SignalRCache.TryGetValue(i, out var state))
+            {
+                var builder = new HubConnectionBuilder();
+                builder.WithUrl("http://localhost:5000/greeterhub");
+                var hubConnection = builder.Build();
+                await hubConnection.StartAsync();
+
+                var channel = System.Threading.Channels.Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+                {
+                    SingleReader = true,
+                    SingleWriter = true
+                });
+
+                var result = await hubConnection.StreamAsChannelAsync<string>("SayHelloBiDi", channel.Reader);
+                state = new SignalRStreamingCall
+                {
+                    RequestStream = channel.Writer,
+                    ResponseStream = result
+                };
+
+                bool success = SignalRCache.TryAdd(i, state);
+                if (!success)
+                {
+                    throw new InvalidOperationException();
+                }
+            }
+
+            return state;
         }
 
         private static AsyncDuplexStreamingCall<HelloRequest, HelloReply> GetGrpcNetClientStream(int i)
@@ -244,6 +285,15 @@ namespace GrpcSampleClient
             await client.RequestStream.WriteAsync(request);
             await client.ResponseStream.MoveNext();
             return client.ResponseStream.Current;
+        }
+
+        private static async Task<HelloReply> MakeSignalRCall(HelloRequest request, SignalRStreamingCall state)
+        {
+            await state.RequestStream.WriteAsync(request.Name);
+            return new HelloReply
+            {
+                Message = await state.ResponseStream.ReadAsync()
+            };
         }
 
         private static async Task<HelloReply> MakeProtobufHttpCall(HelloRequest request, HttpClient client, Version httpVersion)
@@ -372,6 +422,12 @@ namespace GrpcSampleClient
             }
 
             return responseMessage;
+        }
+
+        private class SignalRStreamingCall
+        {
+            public ChannelWriter<string> RequestStream { get; set; }
+            public ChannelReader<string> ResponseStream { get; set; }
         }
     }
 }
