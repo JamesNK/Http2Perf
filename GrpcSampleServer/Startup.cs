@@ -21,7 +21,8 @@ namespace GrpcSampleServer
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddGrpc();
+            services.AddGrpc(o => o.IgnoreUnknownServices = true);
+            services.AddControllers();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -37,7 +38,9 @@ namespace GrpcSampleServer
             {
                 endpoints.MapGrpcService<GreeterService>();
 
-                endpoints.MapPost("/", async context =>
+                endpoints.MapControllers();
+
+                endpoints.MapPost("/protobuf", async context =>
                 {
                     using var memStream = StreamPool.GetStream();
                     await context.Request.Body.CopyToAsync(memStream);

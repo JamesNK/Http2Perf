@@ -11,7 +11,9 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Runtime;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,6 +23,7 @@ namespace GrpcSampleClient
     {
         private static readonly RecyclableMemoryStreamManager StreamPool = new RecyclableMemoryStreamManager();
         private static readonly Dictionary<int, Greeter.GreeterClient> GrpcClientCache = new Dictionary<int, Greeter.GreeterClient>();
+        private static readonly Dictionary<int, AsyncDuplexStreamingCall<HelloRequest, HelloReply>> GrpcStreamCache = new Dictionary<int, AsyncDuplexStreamingCall<HelloRequest, HelloReply>>();
         private static readonly Dictionary<int, HttpClient> HttpClientCache = new Dictionary<int, HttpClient>();
         private static readonly Dictionary<int, HttpMessageInvoker> HttpMessageInvokerCache = new Dictionary<int, HttpMessageInvoker>();
         private static Uri RawGrpcUri= new Uri($"http://localhost:5001/greet.Greeter/SayHello");
@@ -56,49 +59,54 @@ namespace GrpcSampleClient
 
             Func<int, Task> request;
             string clientType;
-            if (args[0] == "g")
+            switch (args[0])
             {
-                request = (i) => MakeGrpcCall(new HelloRequest() { Name = "foo" }, GetGrpcNetClient(i));
-                clientType = "Grpc.Net.Client";
-            }
-            else if (args[0] == "c")
-            {
-                request = (i) => MakeGrpcCall(new HelloRequest() { Name = "foo" }, GetGrpcCoreClient(i));
-                clientType = "Grpc.Core";
-            }
-            else if (args[0] == "r")
-            {
-                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: false, streamResponse: false);
-                clientType = "Raw HttpMessageInvoker";
-            }
-            else if (args[0] == "r-stream-request")
-            {
-                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: true, streamResponse: false);
-                clientType = "Raw HttpMessageInvoker";
-            }
-            else if (args[0] == "r-stream-response")
-            {
-                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: false, streamResponse: true);
-                clientType = "Raw HttpMessageInvoker";
-            }
-            else if (args[0] == "r-stream-all")
-            {
-                request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: true, streamResponse: true);
-                clientType = "Raw HttpMessageInvoker";
-            }
-            else if (args[0] == "h2")
-            {
-                request = (i) => MakeHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5001), HttpVersion.Version20);
-                clientType = "HttpClient+HTTP/2";
-            }
-            else if (args[0] == "h1")
-            {
-                request = (i) => MakeHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5000), HttpVersion.Version11);
-                clientType = "HttpClient+HTTP/1.1";
-            }
-            else
-            {
-                throw new ArgumentException("Argument missing");
+                case "g":
+                    request = (i) => MakeGrpcCall(new HelloRequest() { Name = "foo" }, GetGrpcNetClient(i));
+                    clientType = "Grpc.Net.Client";
+                    break;
+                case "gs":
+                    request = (i) => MakeGrpcCallBiDi(new HelloRequest() { Name = "foo" }, GetGrpcNetClientStream(i));
+                    clientType = "Grpc.Net.Client BiDi";
+                    break;
+                case "c":
+                    request = (i) => MakeGrpcCall(new HelloRequest() { Name = "foo" }, GetGrpcCoreClient(i));
+                    clientType = "Grpc.Core";
+                    break;
+                case "r":
+                    request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: false, streamResponse: false);
+                    clientType = "Raw HttpMessageInvoker";
+                    break;
+                case "r-stream-request":
+                    request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: true, streamResponse: false);
+                    clientType = "Raw HttpMessageInvoker";
+                    break;
+                case "r-stream-response":
+                    request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: false, streamResponse: true);
+                    clientType = "Raw HttpMessageInvoker";
+                    break;
+                case "r-stream-all":
+                    request = (i) => MakeRawGrpcCall(new HelloRequest() { Name = "foo" }, GetHttpMessageInvoker(i), streamRequest: true, streamResponse: true);
+                    clientType = "Raw HttpMessageInvoker";
+                    break;
+                case "h2":
+                    request = (i) => MakeProtobufHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5001), HttpVersion.Version20);
+                    clientType = "HttpClient+HTTP/2";
+                    break;
+                case "h1":
+                    request = (i) => MakeProtobufHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5000), HttpVersion.Version11);
+                    clientType = "HttpClient+HTTP/1.1";
+                    break;
+                case "h2-json":
+                    request = (i) => MakeJsonHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5001), HttpVersion.Version20);
+                    clientType = "HttpClient+JSON+HTTP/2";
+                    break;
+                case "h1-json":
+                    request = (i) => MakeJsonHttpCall(new HelloRequest() { Name = "foo" }, GetHttpClient(i, 5000), HttpVersion.Version11);
+                    clientType = "HttpClient+JSON+HTTP/1.1";
+                    break;
+                default:
+                    throw new ArgumentException("Argument missing");
             }
             Console.WriteLine("Client type: " + clientType);
 
@@ -156,6 +164,18 @@ namespace GrpcSampleClient
             }
 
             return client;
+        }
+
+        private static AsyncDuplexStreamingCall<HelloRequest, HelloReply> GetGrpcNetClientStream(int i)
+        {
+            if (!GrpcStreamCache.TryGetValue(i, out var stream))
+            {
+                var client = GetGrpcNetClient(i);
+                stream = client.SayHelloBiDi();
+                GrpcStreamCache.Add(i, stream);
+            }
+
+            return stream;
         }
 
         private static HttpClient GetHttpClient(int i, int port)
@@ -219,7 +239,14 @@ namespace GrpcSampleClient
             return await client.SayHelloAsync(request);
         }
 
-        private static async Task<HelloReply> MakeHttpCall(HelloRequest request, HttpClient client, Version httpVersion)
+        private static async Task<HelloReply> MakeGrpcCallBiDi(HelloRequest request, AsyncDuplexStreamingCall<HelloRequest, HelloReply> client)
+        {
+            await client.RequestStream.WriteAsync(request);
+            await client.ResponseStream.MoveNext();
+            return client.ResponseStream.Current;
+        }
+
+        private static async Task<HelloReply> MakeProtobufHttpCall(HelloRequest request, HttpClient client, Version httpVersion)
         {
             using var memStream = StreamPool.GetStream();
             request.WriteDelimitedTo(memStream);
@@ -228,12 +255,28 @@ namespace GrpcSampleClient
             {
                 Method = HttpMethod.Post,
                 Content = new StreamContent(memStream),
-                Version = httpVersion
+                Version = httpVersion,
+                RequestUri = new Uri("/protobuf", UriKind.Relative)
             };
             httpRequest.Content.Headers.TryAddWithoutValidation("Content-Type", "application/octet-stream");
             using var httpResponse = await client.SendAsync(httpRequest);
             var responseStream = await httpResponse.Content.ReadAsStreamAsync();
             return HelloReply.Parser.ParseDelimitedFrom(responseStream);
+        }
+
+        private static async Task<HelloReply> MakeJsonHttpCall(HelloRequest request, HttpClient client, Version httpVersion)
+        {
+            using var httpRequest = new HttpRequestMessage()
+            {
+                Method = HttpMethod.Post,
+                Content = new StringContent(JsonSerializer.Serialize(request)),
+                Version = httpVersion,
+                RequestUri = new Uri("/api/greeter/sayhello", UriKind.Relative)
+            };
+            httpRequest.Content.Headers.TryAddWithoutValidation("Content-Type", "application/json");
+            using var httpResponse = await client.SendAsync(httpRequest);
+            //Debugger.Launch();
+            return await httpResponse.Content.ReadFromJsonAsync<HelloReply>();
         }
 
         private const int HeaderSize = 5;

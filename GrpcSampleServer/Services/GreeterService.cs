@@ -13,5 +13,18 @@ namespace GrpcSampleServer
                 Message = "Hello " + request.Name
             });
         }
+
+        public override async Task SayHelloBiDi(IAsyncStreamReader<HelloRequest> requestStream, IServerStreamWriter<HelloReply> responseStream, ServerCallContext context)
+        {
+            while (await requestStream.MoveNext())
+            {
+                var helloReply = new HelloReply
+                {
+                    Message = "Hello " + requestStream.Current.Name
+                };
+
+                await responseStream.WriteAsync(helloReply);
+            }
+        }
     }
 }
