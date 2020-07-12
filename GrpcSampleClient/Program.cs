@@ -3,6 +3,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using GrpcSample;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IO;
 using System;
 using System.Buffers.Binary;
@@ -181,6 +182,7 @@ namespace GrpcSampleClient
             {
                 var builder = new HubConnectionBuilder();
                 builder.WithUrl("http://localhost:5000/greeterhub");
+                builder.AddMessagePackProtocol();
                 var hubConnection = builder.Build();
                 await hubConnection.StartAsync();
 

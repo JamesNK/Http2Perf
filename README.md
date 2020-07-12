@@ -24,6 +24,7 @@ Clients:
 * h2 = Protobuf with HttpClient+HTTP/2
 * h1-json = JSON with HttpClient+HTTP/1
 * h2-json = JSON with HttpClient+HTTP/2
+* s = SignalR bidi streaming (messagepack)
 
 Example - Grpc.Net.Client + 100 callers + connection per thread (100 connections)
 
