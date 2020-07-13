@@ -33,8 +33,6 @@ namespace GrpcSampleClient
             data = new byte[messageSize];
             _content.WriteTo(new CodedOutputStream(data));
             await stream.WriteAsync(data, CancellationToken.None).ConfigureAwait(false);
-
-            await stream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
         }
 
         protected override bool TryComputeLength(out long length)
