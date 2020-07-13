@@ -192,11 +192,11 @@ namespace GrpcSampleClient
                     SingleWriter = true
                 });
 
-                var result = await hubConnection.StreamAsChannelAsync<string>("SayHelloBiDi", channel.Reader);
+                var result = hubConnection.StreamAsync<string>("SayHelloBiDi", channel.Reader);
                 state = new SignalRStreamingCall
                 {
                     RequestStream = channel.Writer,
-                    ResponseStream = result
+                    ResponseStream = result.GetAsyncEnumerator()
                 };
 
                 bool success = SignalRCache.TryAdd(i, state);
@@ -292,9 +292,13 @@ namespace GrpcSampleClient
         private static async Task<HelloReply> MakeSignalRCall(HelloRequest request, SignalRStreamingCall state)
         {
             await state.RequestStream.WriteAsync(request.Name);
+            if (!await state.ResponseStream.MoveNextAsync())
+            {
+                throw new InvalidOperationException("Unexpected end of stream.");
+            }
             return new HelloReply
             {
-                Message = await state.ResponseStream.ReadAsync()
+                Message = state.ResponseStream.Current
             };
         }
 
@@ -429,7 +433,7 @@ namespace GrpcSampleClient
         private class SignalRStreamingCall
         {
             public ChannelWriter<string> RequestStream { get; set; }
-            public ChannelReader<string> ResponseStream { get; set; }
+            public IAsyncEnumerator<string> ResponseStream { get; set; }
         }
     }
 }
