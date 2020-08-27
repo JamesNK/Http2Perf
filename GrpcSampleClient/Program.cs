@@ -229,7 +229,6 @@ namespace GrpcSampleClient
             }
             if (!HttpClientCache.TryGetValue(i, out var client))
             {
-                AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
                 client = new HttpClient { BaseAddress = new Uri("http://localhost:" + port) };
                 HttpClientCache.Add(i, client);
             }
@@ -245,7 +244,6 @@ namespace GrpcSampleClient
             }
             if (!HttpMessageInvokerCache.TryGetValue(i, out var client))
             {
-                AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
                 client = new HttpMessageInvoker(new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false });
                 HttpMessageInvokerCache.Add(i, client);
             }
@@ -255,7 +253,6 @@ namespace GrpcSampleClient
 
         private static Greeter.GreeterClient GetGrpcNetClient(string host, int port)
         {
-            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
             var httpHandler = new HttpClientHandler() { UseProxy = false, AllowAutoRedirect = false };
             var baseUri = new UriBuilder
             {
