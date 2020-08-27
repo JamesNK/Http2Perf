@@ -11,7 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="3.1.5" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="1.3.2" />
-    <PackageReference Include="Grpc.AspNetCore" Version="2.30.0-pre1" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.31.0-dev202008270701" />
   </ItemGroup>
 
 </Project>

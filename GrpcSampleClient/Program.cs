@@ -312,6 +312,7 @@ namespace GrpcSampleClient
                 Method = HttpMethod.Post,
                 Content = new StreamContent(memStream),
                 Version = httpVersion,
+                VersionPolicy = HttpVersionPolicy.RequestVersionOrHigher,
                 RequestUri = new Uri("/protobuf", UriKind.Relative)
             };
             httpRequest.Content.Headers.TryAddWithoutValidation("Content-Type", "application/octet-stream");
@@ -327,6 +328,7 @@ namespace GrpcSampleClient
                 Method = HttpMethod.Post,
                 Content = new StringContent(JsonSerializer.Serialize(request)),
                 Version = httpVersion,
+                VersionPolicy = HttpVersionPolicy.RequestVersionOrHigher,
                 RequestUri = new Uri("/api/greeter/sayhello", UriKind.Relative)
             };
             httpRequest.Content.Headers.TryAddWithoutValidation("Content-Type", "application/json");
@@ -342,6 +344,7 @@ namespace GrpcSampleClient
         {
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, RawGrpcUri);
             httpRequest.Version = HttpVersion.Version20;
+            httpRequest.VersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
 
             if (!streamRequest)
             {
