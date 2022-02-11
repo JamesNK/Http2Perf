@@ -10,7 +10,7 @@
 
     <Compile Include="..\GrpcSampleServer\Services\GreeterService.cs" Link="Services\GreeterService.cs" />
 
-    <PackageReference Include="Google.Protobuf" Version="3.11.4" />
+    <PackageReference Include="Google.Protobuf" Version="3.15.0" />
     <PackageReference Include="Grpc.Core" Version="2.28.1" />
     <PackageReference Include="Grpc.Tools" Version="2.28.1" PrivateAssets="All" />
   </ItemGroup>
